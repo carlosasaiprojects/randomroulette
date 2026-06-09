@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ruleta Aleatoria</title>
+    <style>
+        /* Documentación visual (CSS) */
+        body { font-family: Arial, sans-serif; text-align: center; margin: 30px; background-color: #f4f4f9; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 0 15px rgba(0,0,0,0.2); }
+        input, button { padding: 10px; margin: 5px; border-radius: 5px; border: 1px solid #ccc; font-size: 16px; }
+        button { background-color: #28a745; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #218838; }
+        button:disabled { background-color: #aaa; cursor: not-allowed; }
+        ul { list-style-type: none; padding: 0; }
+        li { padding: 8px 15px; background: #eee; margin: 5px; border-radius: 5px; display: inline-block; }
+        
+        .turno { font-size: 1.3em; color: #333; font-weight: bold; margin-bottom: 20px; }
+        .resultado { font-size: 1.5em; font-weight: bold; color: #d9534f; margin-top: 20px; min-height: 35px; }
+
+        /* Estilos de la ruleta visual */
+        .ruleta-contenedor { 
+            position: relative; 
+            width: 300px; 
+            height: 300px; 
+            margin: 30px auto; 
+            display: none; 
+        }
+        .flecha { 
+            position: absolute; 
+            top: -15px; 
+            left: 50%; 
+            transform: translateX(-50%); 
+            width: 0; 
+            height: 0; 
+            border-left: 15px solid transparent; 
+            border-right: 15px solid transparent; 
+            border-top: 30px solid #d9534f; 
+            z-index: 10; 
+        }
+        .ruleta { 
+            width: 100%; 
+            height: 100%; 
+            border-radius: 50%; 
+            border: 5px solid #333; 
+            box-sizing: border-box; 
+            position: relative; 
+            overflow: hidden; 
+            transition: transform 4s cubic-bezier(0.25, 1, 0.5, 1); 
+        }
+        .sector-texto { 
+            position: absolute; 
+            top: 50%; 
+            left: 50%; 
+            transform-origin: 0 0; 
+            font-weight: bold; 
+            color: white; 
+            font-size: 16px; 
+            text-shadow: 1px 1px 2px black; 
+            pointer-events: none; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🎲 Ruleta Aleatoria 🎲</h2>
+        
+        <input type="text" id="nombreInput" placeholder="Escribe un nombre">
+        <button onclick="agregarNombre()">Añadir a la lista</button>
+
+        <h3>Participantes:</h3>
+        <ul id="listaParticipantes"></ul>
+
+        <div id="ruletaContenedor" class="ruleta-contenedor">
+            <div class="flecha"></div>
+            <div id="ruletaVisual" class="ruleta"></div>
+        </div>
+
+        <div id="controlesSeccion" style="display: none; margin-top: 20px;">
+            <p class="turno" id="turnoActual"></p>
+            <button onclick="tirarRuleta()" id="btnTirar">¡Girar la Ruleta!</button>
+            <p class="resultado" id="resultadoRuleta"></p>
+            <button onclick="siguienteTurno()" id="btnSiguiente" style="display: none;">Siguiente Persona</button>
+        </div>
+    </div>
+
+    <script>
+        /* Documentación lógica (JavaScript) */
+        
+        let participantes = []; 
+        let sorteoPrecalculado = []; // Aquí guardaremos las parejas perfectas antes de girar
+        let indiceTurno = 0;
+        let rotacionAcumulada = 0; 
+
+        function agregarNombre() {
+            const input = document.getElementById('nombreInput');
+            const nombre = input.value.trim();
+            
+            if (nombre !== '' && !participantes.includes(nombre)) {
+                participantes.push(nombre);
+                actualizarListaTextual();
+                input.value = ''; 
+            }
+        }
+
+        function actualizarListaTextual() {
+            const lista = document.getElementById('listaParticipantes');
+            lista.innerHTML = '';
+            
+            participantes.forEach(nombre => {
+                const li = document.createElement('li');
+                li.textContent = nombre;
+                lista.appendChild(li);
+            });
+
+            if (participantes.length > 1) {
+                document.getElementById('ruletaContenedor').style.display = 'block';
+                document.getElementById('controlesSeccion').style.display = 'block';
+                indiceTurno = 0;
+                dibujarRuleta();
+                prepararSorteoSecreto(); // En el momento que hay más de 1 participante, calculamos el destino
+                mostrarTurno();
+            } else {
+                document.getElementById('ruletaContenedor').style.display = 'none';
+                document.getElementById('controlesSeccion').style.display = 'none';
+            }
+        }
+
+        // --- NUEVA FUNCIÓN: Ensayo y error matemático para asegurar un sorteo perfecto ---
+        function prepararSorteoSecreto() {
+            let intentos = 0;
+            let exito = false;
+            
+            // Repetirá el sorteo virtualmente hasta 1000 veces hasta que encaje perfecto sin fallos
+            while (!exito && intentos < 1000) {
+                intentos++;
+                let disponibles = [...participantes];
+                let tempSorteo = [];
+                let fallo = false;
+
+                for (let i = 0; i < participantes.length; i++) {
+                    const personaActual = participantes[i];
+                    const pActualMin = personaActual.toLowerCase();
+                    let parejaElegida = null;
+
+                    // TRAMPA 1: Rubén -> Joel
+                    if (pActualMin === 'rubén' || pActualMin === 'ruben') {
+                        let idx = disponibles.findIndex(p => p.toLowerCase() === 'joel');
+                        if (idx !== -1) parejaElegida = disponibles.splice(idx, 1)[0];
+                    }
+                    // TRAMPA 2: Carlos -> Emma
+                    else if (pActualMin === 'carlos') {
+                        let idx = disponibles.findIndex(p => p.toLowerCase() === 'emma');
+                        if (idx !== -1) parejaElegida = disponibles.splice(idx, 1)[0];
+                    }
+
+                    // RESTO DE PARTICIPANTES
+                    if (!parejaElegida) {
+                        // Descartamos a la persona misma ¡Siempre!
+                        let opcionesValidas = disponibles.filter(p => p !== personaActual);
+
+                        // Si Carlos juega, bloqueamos a Emma para el resto
+                        let carlosJuega = participantes.some(p => p.toLowerCase() === 'carlos');
+                        if (carlosJuega) {
+                            opcionesValidas = opcionesValidas.filter(p => p.toLowerCase() !== 'emma');
+                        }
+
+                        // Si Rubén juega, bloqueamos a Joel para el resto
+                        let rubenJuega = participantes.some(p => p.toLowerCase() === 'rubén' || p.toLowerCase() === 'ruben');
+                        if (rubenJuega) {
+                            opcionesValidas = opcionesValidas.filter(p => p.toLowerCase() !== 'joel');
+                        }
+
+                        // Si alguien se queda sin opciones válidas (ej. se quedó solo consigo mismo)
+                        // Declaramos fallo para que el bucle "while" empiece todo el sorteo desde cero.
+                        if (opcionesValidas.length === 0) {
+                            fallo = true;
+                            break; 
+                        }
+
+                        // Asignamos la opción
+                        const indiceAleatorio = Math.floor(Math.random() * opcionesValidas.length);
+                        parejaElegida = opcionesValidas[indiceAleatorio];
+                        
+                        // Retiramos a la persona elegida de la bolsa
+                        let idxGlobal = disponibles.indexOf(parejaElegida);
+                        disponibles.splice(idxGlobal, 1);
+                    }
+                    
+                    tempSorteo.push(parejaElegida);
+                }
+
+                // Si pasamos a todos sin fallo, el sorteo es perfecto
+                if (!fallo) {
+                    sorteoPrecalculado = tempSorteo;
+                    exito = true;
+                }
+            }
+
+            // Sistema de seguridad en caso de ingresar una combinación matemáticamente imposible
+            if (!exito) {
+                sorteoPrecalculado = [...participantes];
+            }
+        }
+
+        function dibujarRuleta() {
+            const ruleta = document.getElementById('ruletaVisual');
+            ruleta.innerHTML = ''; 
+            
+            if (participantes.length === 0) return;
+
+            const gradosPorSector = 360 / participantes.length;
+            const colores = ['#f1c40f', '#e67e22', '#e74c3c', '#9b59b6', '#3498db', '#1abc9c', '#2ecc71', '#34495e'];
+            let gradientes = [];
+
+            participantes.forEach((persona, i) => {
+                let color = colores[i % colores.length];
+                gradientes.push(`${color} ${i * gradosPorSector}deg ${(i + 1) * gradosPorSector}deg`);
+
+                const texto = document.createElement('div');
+                texto.className = 'sector-texto';
+                let anguloMedio = (i * gradosPorSector) + (gradosPorSector / 2) - 90;
+                
+                texto.style.transform = `rotate(${anguloMedio}deg) translate(60px, -50%)`;
+                texto.textContent = persona;
+                ruleta.appendChild(texto);
+            });
+
+            ruleta.style.background = `conic-gradient(${gradientes.join(', ')})`;
+        }
+
+        function mostrarTurno() {
+            if (indiceTurno < participantes.length) {
+                document.getElementById('turnoActual').textContent = `Es el turno de: ${participantes[indiceTurno]}`;
+                document.getElementById('resultadoRuleta').textContent = '';
+                document.getElementById('btnTirar').style.display = 'inline-block';
+                document.getElementById('btnTirar').disabled = false;
+                document.getElementById('btnSiguiente').style.display = 'none';
+                
+                rotacionAcumulada = 0;
+                document.getElementById('ruletaVisual').style.transition = 'none';
+                document.getElementById('ruletaVisual').style.transform = `rotate(0deg)`;
+                document.getElementById('ruletaVisual').offsetHeight; 
+                document.getElementById('ruletaVisual').style.transition = 'transform 4s cubic-bezier(0.25, 1, 0.5, 1)';
+            } else {
+                document.getElementById('turnoActual').textContent = '¡Todos tienen pareja!';
+                document.getElementById('btnTirar').style.display = 'none';
+                document.getElementById('btnSiguiente').style.display = 'none';
+            }
+        }
+
+        function tirarRuleta() {
+            document.getElementById('btnTirar').disabled = true;
+            document.getElementById('resultadoRuleta').textContent = 'Girando... 🔄';
+
+            const personaActual = participantes[indiceTurno];
+            
+            // Ya no decidimos nada aquí, simplemente "leemos" la respuesta precalculada perfecta
+            const parejaElegida = sorteoPrecalculado[indiceTurno];
+
+            // --- ANIMACIÓN VISUAL ---
+            const indiceVisualGanador = participantes.indexOf(parejaElegida);
+            const gradosPorSector = 360 / participantes.length;
+            const anguloMedioGanador = (indiceVisualGanador * gradosPorSector) + (gradosPorSector / 2);
+            
+            let rotacionObjetivo = 360 - anguloMedioGanador;
+
+            let variacionAleatoria = (Math.random() - 0.5) * (gradosPorSector - 10);
+            rotacionObjetivo += variacionAleatoria;
+
+            rotacionObjetivo = rotacionObjetivo % 360;
+            if (rotacionObjetivo < 0) rotacionObjetivo += 360;
+
+            rotacionAcumulada += (360 * 5); // 5 vueltas completas
+            
+            let resto = rotacionAcumulada % 360;
+            let ajuste = rotacionObjetivo - resto;
+            if (ajuste < 0) ajuste += 360;
+
+            rotacionAcumulada += ajuste;
+
+            document.getElementById('ruletaVisual').style.transform = `rotate(${rotacionAcumulada}deg)`;
+
+            setTimeout(() => {
+                document.getElementById('resultadoRuleta').textContent = `¡A ${personaActual} le toca ${parejaElegida}! 🎉`;
+                document.getElementById('btnTirar').style.display = 'none';
+                document.getElementById('btnSiguiente').style.display = 'inline-block';
+            }, 4000);
+        }
+
+        function siguienteTurno() {
+            indiceTurno++;
+            mostrarTurno();
+        }
+    </script>
+</body>
+</html>
